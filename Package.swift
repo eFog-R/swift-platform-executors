@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-  name: "Win32NativeExecutors",
+  name: "SwiftPlatformExecutors",
   products: [
     .library(
       name: "Win32NativeExecutors",

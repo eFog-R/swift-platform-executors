@@ -1,14 +1,32 @@
-# Swift Win32 Native Executors
+# Swift Platform Executors
 
-This package provides two custom executors for Swift Concurrency.  The
-first, `Win32EventLoopExecutor`, is a `SerialExecutor` based on a
-standard Win32 message loop.  The second, `Win32ThreadPoolExecutor`,
-is a `TaskExecutor` that uses [the Win32 Thread Pool
-API](https://learn.microsoft.com/en-us/windows/win32/procthread/thread-pool-api).
+This package provides platform-native executors for Swift Concurrency that
+do not rely on Dispatch or Foundation to provide the job scheduling system.
 
-When combined with the new support in the Swift Concurrency Runtime
-for overriding the default main and global executors, this package can
-be used to write native Win32 programs that do not use Dispatch.
+## Getting Started
+
+Below is a description of the steps you need to take to use this
+package.
+
+#### Add the dependency
+
+You will need to add the dependency to your `Package.swift`, as show
+below:
+
+```swift
+.package(
+  url: "https://github.com/swiftlang/swift-platform-executors",
+  from: "0.0.1"
+),
+```
+
+You will also need to add it to your application or library target,
+e.g:
+
+```swift
+.target(name: "MyApplication", dependencies: ["SwiftPlatformExecutors"]),
+```
+
 
 ## Getting started
 
@@ -36,7 +54,9 @@ e.g:
 
 #### Using the executors
 
-##### `Win32EventLoopExecutor`
+##### Windows
+
+###### `Win32EventLoopExecutor`
 
 `Win32EventLoopExecutor` is a
 [`SerialExecutor`](https://developer.apple.com/documentation/swift/serialexecutor)
@@ -106,10 +126,12 @@ something calls the `stop()` method (the latter is thread-safe and can
 be done asynchronously; the message loop will stop when it is next
 safe to do so).
 
-##### `Win32ThreadPoolExecutor`
+###### `Win32ThreadPoolExecutor`
 
 The `Win32ThreadPoolExecutor` is a
-[`TaskExecutor`](https://developer.apple.com/documentation/swift/taskexecutor)
+[`TaskExecutor`](https://developer.apple.com/documentation/swift/taskexecutor) 
+built on [the Win32 Thread Pool
+API](https://learn.microsoft.com/en-us/windows/win32/procthread/thread-pool-api)
 and can be used with the
 [`withTaskExecutorPreference(_:operation:)`](https://developer.apple.com/documentation/swift/withtaskexecutorpreference(_:isolation:operation:)),
 [`Task(executorPreference:)`](https://developer.apple.com/documentation/swift/task/init(executorpreference:priority:operation:)-7zpzv)
@@ -137,22 +159,14 @@ Passing `nil` to that API will use the default pool.
 
 ##### Replacing the default main and global executors
 
-It is also possible to replace the default main and global executors
-with these two executors.  You can do this by, in your main program,
-defining `DefaultExecutorFactory`, as follows:
+Once [the relevant Swift Evolution proposal lands](https://github.com/swiftlang/swift-evolution/pull/2654/files), it will be possible
+to replace the default main and global executors with executors from
+this package.
 
-```swift
-import Win32NativeExecutors
+See [the
+proposal](https://github.com/swiftlang/swift-evolution/pull/2654/files)
+for more information on doing this.
 
-typealias DefaultExecutorFactory = Win32NativeExecutorFactory
-```
-
-Once you have done this, `@MainActor` will use the
-`Win32EventLoopExecutor`, which will be started automatically for you
-by the runtime (no need to explicitly call `run()`), and ordinary
-tasks will default to a `Win32ThreadPoolExecutor` instance that uses
-the default thread pool.
-
-Be aware that doing this presently means that the Dispatch main queue
-will not be processed, so anything that relies explicitly on
+Be aware that if you take advantage of this option, the Dispatch main
+queue will not be processed, so anything that relies explicitly on
 `Dispatch.main` will not work.
