@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if canImport(WinSDK)
 import Swift
 
 /// A generic priority queue, with a user-defined comparison function.
@@ -148,7 +149,7 @@ struct PriorityQueue<T> {
   ///
   /// - ndx: The index at which to start.
   ///
-  private mutating func downHeap(ndx:  Int) {
+  private mutating func downHeap(ndx: Int) {
     var theNdx = ndx
     while true {
       let leftNdx = 2 * theNdx
@@ -165,7 +166,8 @@ struct PriorityQueue<T> {
       }
 
       if rightNdx < storage.count
-           && compare(storage[rightNdx], storage[largestNdx]) {
+        && compare(storage[rightNdx], storage[largestNdx])
+      {
         largestNdx = rightNdx
       }
 
@@ -196,3 +198,4 @@ extension PriorityQueue where T: Comparable {
     self.init(compare: >)
   }
 }
+#endif

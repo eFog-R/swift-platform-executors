@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if canImport(WinSDK)
 import WinSDK
 internal import Synchronization
 
@@ -62,22 +63,21 @@ extension ExecutorJob {
 
   fileprivate var win32Timestamp: Win32EventLoopExecutor.Timestamp {
     get {
-      if win32TimestampIsIndirect {
-        let ptr = unsafe win32TimestampPointer
-        return unsafe ptr.pointee
-      } else {
+      guard win32TimestampIsIndirect else {
         return unsafe withUnsafeExecutorPrivateData {
           return unsafe $0.assumingMemoryBound(
             to: Win32EventLoopExecutor.Timestamp.self
           )[0]
         }
       }
+      let ptr = unsafe win32TimestampPointer
+      return unsafe ptr.pointee
     }
     set {
       if win32TimestampIsIndirect {
         let ptr = unsafe win32TimestampPointer
         unsafe ptr.pointee = newValue
-     } else {
+      } else {
         unsafe withUnsafeExecutorPrivateData {
           unsafe $0.withMemoryRebound(to: Win32EventLoopExecutor.Timestamp.self) {
             unsafe $0[0] = newValue
@@ -149,42 +149,44 @@ public protocol Win32EventLoopExecutorDelegate {
 }
 
 /// Compare UnownedJobs by priority, breaking ties with the sequence number.
-fileprivate func compareJobsByPriority(
-  lhs: UnownedJob, rhs: UnownedJob
+private func compareJobsByPriority(
+  lhs: UnownedJob,
+  rhs: UnownedJob
 ) -> Bool {
   if lhs.priority == rhs.priority {
     // If they're the same priority, compare the sequence numbers to
     // ensure this queue gives stable ordering.  We want the lowest
     // sequence number first, but note that we want to handle wrapping.
-    let delta = ExecutorJob(lhs).win32Sequence
+    let delta =
+      ExecutorJob(lhs).win32Sequence
       &- ExecutorJob(rhs).win32Sequence
     return (delta >> (UInt.bitWidth - 1)) != 0
   }
   return lhs.priority > rhs.priority
 }
 
-
 /// Retrieve a message from the Win32 message queue
 ///
 /// This exists to work around the incorrect return type declared by the
 /// GetMessage() API, which claims to return BOOL, but really returns an
 /// INT (0, 1, or -1).
-fileprivate func GetMessage(_ message: inout MSG,
-                            _ hWnd: HWND?,
-                            _ wMsgFilterMin: UINT,
-                            _ wMsgFilterMax: UINT) -> Int {
+private func GetMessage(
+  _ message: inout MSG,
+  _ hWnd: HWND?,
+  _ wMsgFilterMin: UINT,
+  _ wMsgFilterMax: UINT
+) -> Int {
   let getMessagePtr = unsafe GetMessageW
   let getMessage = unsafe unsafeBitCast(
     getMessagePtr,
-    to: ((LPMSG?, HWND?, UINT, UINT) -> Int8).self)
+    to: ((LPMSG?, HWND?, UINT, UINT) -> Int8).self
+  )
   return Int(unsafe getMessage(&message, hWnd, wMsgFilterMin, wMsgFilterMax))
 }
 
 /// An executor that uses a Windows event loop
 @safe
-public final class Win32EventLoopExecutor
-  : SerialExecutor, RunLoopExecutor, @unchecked Sendable
-{
+public final class Win32EventLoopExecutor: SerialExecutor, RunLoopExecutor, @unchecked Sendable {
 
   struct Timestamp {
     /// The earliest time at which a job should run.
@@ -259,7 +261,7 @@ public final class Win32EventLoopExecutor
     self.waitQueues = Mutex(
       [
         PriorityQueue(compare: compareTimestamps),
-        PriorityQueue(compare: compareTimestamps)
+        PriorityQueue(compare: compareTimestamps),
       ]
     )
   }
@@ -294,8 +296,10 @@ public final class Win32EventLoopExecutor
       dwThreadId = dwCurrentThreadId
     }
 
-    precondition(dwThreadId == dwCurrentThreadId,
-                 "Win32EventLoopExecutor must always run on the same thread")
+    precondition(
+      dwThreadId == dwCurrentThreadId,
+      "Win32EventLoopExecutor must always run on the same thread"
+    )
 
     while true {
       // Switch queues
@@ -319,7 +323,9 @@ public final class Win32EventLoopExecutor
 
       // Wait for messages, the stop event, or APCs
       let dwRet = unsafe MsgWaitForMultipleObjectsEx(
-        1, &hEvent, dwMsToWait,
+        1,
+        &hEvent,
+        dwMsToWait,
         DWORD(QS_ALLINPUT),
         DWORD(MWMO_ALERTABLE)
       )
@@ -410,10 +416,10 @@ public final class Win32EventLoopExecutor
       for queue in WaitQueue.continuous.rawValue...WaitQueue.suspending.rawValue {
         // Run all of the queued events
         while let job = queues[queue].pop(
-                when: {
-                  ExecutorJob($0).win32Timestamp.target <= now[queue]
-                }
-              ) {
+          when: {
+            ExecutorJob($0).win32Timestamp.target <= now[queue]
+          }
+        ) {
           var theJob = ExecutorJob(job)
           theJob.clearWin32Timestamp()
           currentRunQueue.push(job)
@@ -493,10 +499,12 @@ public final class Win32EventLoopExecutor
 
 extension Win32EventLoopExecutor: SchedulableExecutor {
 
-  public func enqueue<C: Clock>(_ job: consuming ExecutorJob,
-                                after delay: C.Duration,
-                                tolerance: C.Duration? = nil,
-                                clock: C) {
+  public func enqueue<C: Clock>(
+    _ job: consuming ExecutorJob,
+    after delay: C.Duration,
+    tolerance: C.Duration? = nil,
+    clock: C
+  ) {
     let queue: WaitQueue
     if clock.traits.contains(.continuous) {
       queue = .continuous
@@ -506,29 +514,34 @@ extension Win32EventLoopExecutor: SchedulableExecutor {
 
     var now: UInt64 = 0
     switch queue {
-      case .continuous:
-        unsafe QueryUnbiasedInterruptTimePrecise(&now)
-      case .suspending:
-        unsafe QueryInterruptTimePrecise(&now)
+    case .continuous:
+      unsafe QueryUnbiasedInterruptTimePrecise(&now)
+    case .suspending:
+      unsafe QueryInterruptTimePrecise(&now)
     }
 
     let delayAsDuration = clock.convert(from: delay)!
     let (delaySecs, delayAttos) = delayAsDuration.components
-    let delay100ns = max(delaySecs * 10000000 + delayAttos / 100000000000, 0)
+    let delay100ns = max(delaySecs * 10_000_000 + delayAttos / 100_000_000_000, 0)
     let tolerance100ns: Int64
     if let tolerance {
       let toleranceAsDuration = clock.convert(from: tolerance)!
       let (toleranceSecs, toleranceAttos) = toleranceAsDuration.components
-      tolerance100ns = max(toleranceSecs * 10000000
-                             + toleranceAttos / 100000000000, 0)
+      tolerance100ns = max(
+        toleranceSecs * 10_000_000
+          + toleranceAttos / 100_000_000_000,
+        0
+      )
     } else {
       // Default tolerance is 10%, with a maximum of 100ms and a minimum of
       // 15.625ms (so as not to needlessly trigger spinning for accuracy).
-      tolerance100ns = max(min(delay100ns / 10, 1000000), 156250)
+      tolerance100ns = max(min(delay100ns / 10, 1_000_000), 156250)
     }
 
-    let timestamp = Timestamp(target: now + UInt64(delay100ns),
-                              leeway: UInt64(tolerance100ns))
+    let timestamp = Timestamp(
+      target: now + UInt64(delay100ns),
+      leeway: UInt64(tolerance100ns)
+    )
 
     job.setupWin32Timestamp()
     job.win32Timestamp = timestamp
@@ -572,12 +585,18 @@ public final class Win32ThreadPoolExecutor: TaskExecutor, @unchecked Sendable {
     unsafe InitializeThreadpoolEnvironment(&cbeLowPriority)
     unsafe InitializeThreadpoolEnvironment(&cbeNormalPriority)
 
-    unsafe SetThreadpoolCallbackPriority(&cbeHighPriority,
-                                         TP_CALLBACK_PRIORITY_HIGH)
-    unsafe SetThreadpoolCallbackPriority(&cbeLowPriority,
-                                         TP_CALLBACK_PRIORITY_LOW)
-    unsafe SetThreadpoolCallbackPriority(&cbeNormalPriority,
-                                         TP_CALLBACK_PRIORITY_NORMAL)
+    unsafe SetThreadpoolCallbackPriority(
+      &cbeHighPriority,
+      TP_CALLBACK_PRIORITY_HIGH
+    )
+    unsafe SetThreadpoolCallbackPriority(
+      &cbeLowPriority,
+      TP_CALLBACK_PRIORITY_LOW
+    )
+    unsafe SetThreadpoolCallbackPriority(
+      &cbeNormalPriority,
+      TP_CALLBACK_PRIORITY_NORMAL
+    )
 
     if let pool = unsafe pool {
       unsafe SetThreadpoolCallbackPool(&cbeHighPriority, pool)
@@ -616,10 +635,14 @@ public final class Win32ThreadPoolExecutor: TaskExecutor, @unchecked Sendable {
     let priority = job.priority
     let unownedJob = UnownedJob(job)
     let work = unsafe withEnvironment(for: priority) { environment in
-      unsafe CreateThreadpoolWork(_runJobOnThreadPool,
-                                  unsafe unsafeBitCast(unownedJob,
-                                                       to: PVOID.self),
-                                  environment)
+      unsafe CreateThreadpoolWork(
+        _runJobOnThreadPool,
+        unsafe unsafeBitCast(
+          unownedJob,
+          to: PVOID.self
+        ),
+        environment
+      )
     }
 
     unsafe SubmitThreadpoolWork(work)
@@ -632,7 +655,7 @@ public final class Win32ThreadPoolExecutor: TaskExecutor, @unchecked Sendable {
 }
 
 @_cdecl("_swift_runJobOnThreadPool")
-fileprivate func _runJobOnThreadPool(
+private func _runJobOnThreadPool(
   instance: PTP_CALLBACK_INSTANCE?,
   context: UnsafeMutableRawPointer?,
   work: PTP_WORK?
@@ -643,7 +666,7 @@ fileprivate func _runJobOnThreadPool(
 }
 
 @_cdecl("_swift_runJobFromTimerCallback")
-fileprivate func _runJobFromTimerCallback(
+private func _runJobFromTimerCallback(
   instance: PTP_CALLBACK_INSTANCE?,
   context: UnsafeMutableRawPointer?,
   timer: PTP_TIMER?
@@ -656,13 +679,15 @@ fileprivate func _runJobFromTimerCallback(
 
 extension Win32ThreadPoolExecutor: SchedulableExecutor {
 
-  public func enqueue<C: Clock>(_ job: consuming ExecutorJob,
-                                after delay: C.Duration,
-                                tolerance: C.Duration? = nil,
-                                clock: C) {
+  public func enqueue<C: Clock>(
+    _ job: consuming ExecutorJob,
+    after delay: C.Duration,
+    tolerance: C.Duration? = nil,
+    clock: C
+  ) {
     let delayAsDuration = clock.convert(from: delay)!
     let (delaySecs, delayAttos) = delayAsDuration.components
-    let delay100ns = max(delaySecs * 10000000 + delayAttos / 100000000000, 0)
+    let delay100ns = max(delaySecs * 10_000_000 + delayAttos / 100_000_000_000, 0)
 
     var fireTime: FILETIME
 
@@ -677,15 +702,19 @@ extension Win32ThreadPoolExecutor: SchedulableExecutor {
       let now100ns = UInt64(now.dwLowDateTime) | UInt64(now.dwHighDateTime) << 32
       let target100ns = now100ns + UInt64(delay100ns)
 
-      fireTime = FILETIME(dwLowDateTime:
-                            DWORD(truncatingIfNeeded: target100ns),
-                          dwHighDateTime:
-                            DWORD(truncatingIfNeeded: target100ns >> 32))
+      fireTime = FILETIME(
+        dwLowDateTime:
+          DWORD(truncatingIfNeeded: target100ns),
+        dwHighDateTime:
+          DWORD(truncatingIfNeeded: target100ns >> 32)
+      )
     } else {
-      fireTime = FILETIME(dwLowDateTime:
-                            DWORD(truncatingIfNeeded: -delay100ns),
-                          dwHighDateTime:
-                            DWORD(truncatingIfNeeded: -delay100ns >> 32))
+      fireTime = FILETIME(
+        dwLowDateTime:
+          DWORD(truncatingIfNeeded: -delay100ns),
+        dwHighDateTime:
+          DWORD(truncatingIfNeeded: -delay100ns >> 32)
+      )
     }
 
     unsafe job.win32ThreadPoolExecutor = self.asUnownedTaskExecutor()
@@ -695,8 +724,10 @@ extension Win32ThreadPoolExecutor: SchedulableExecutor {
     let timer = unsafe withEnvironment(for: priority) { environment in
       unsafe CreateThreadpoolTimer(
         _runJobFromTimerCallback,
-        unsafe unsafeBitCast(unownedJob,
-                             to: UnsafeMutableRawPointer.self),
+        unsafe unsafeBitCast(
+          unownedJob,
+          to: UnsafeMutableRawPointer.self
+        ),
         environment
       )
     }
@@ -710,7 +741,8 @@ extension Win32ThreadPoolExecutor: SchedulableExecutor {
     if let tolerance {
       let toleranceAsDuration = clock.convert(from: tolerance)!
       let (toleranceSecs, toleranceAttos) = toleranceAsDuration.components
-      msWindowLength = DWORD(toleranceSecs * 1000)
+      msWindowLength =
+        DWORD(toleranceSecs * 1000)
         + DWORD(toleranceAttos / 1_000_000_000_000_000)
       //                                 ^ns     ^us ^ms
     } else {
@@ -723,3 +755,4 @@ extension Win32ThreadPoolExecutor: SchedulableExecutor {
   }
 
 }
+#endif

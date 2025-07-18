@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if canImport(WinSDK)
 import _Concurrency
 import Synchronization
 
@@ -26,14 +27,14 @@ import Synchronization
 //
 //   Dmax = D + max(D/4, maxDelayTolerance)
 //
-fileprivate let maxDelayTolerance = 250 // ms
+private let maxDelayTolerance = 250  // ms
 
 // For the Thread Pool executor, we can return slightly early
-fileprivate let minDelayTolerance = 1 // ms
+private let minDelayTolerance = 1  // ms
 
 func createJob(
   priority: TaskPriority,
-  _ body: @escaping () -> ()
+  _ body: @escaping () -> Void
 ) -> ExecutorJob {
   // We use this undocumented function to allow for direct testing of executors
   return _swift_createJobForTestingOnly(priority: priority, body)
@@ -151,12 +152,12 @@ struct ExecutorFixture {
         }
 
         serialExecutor.enqueue(mediumJob)  // 3
-        serialExecutor.enqueue(lowJob)     // 5
-        serialExecutor.enqueue(highJob)    // 1
-        serialExecutor.enqueue(lowJob2)    // 6
-        serialExecutor.enqueue(mediumJob2) // 4
-        serialExecutor.enqueue(highJob2)   // 2
-        serialExecutor.enqueue(stopJob)    // 7
+        serialExecutor.enqueue(lowJob)  // 5
+        serialExecutor.enqueue(highJob)  // 1
+        serialExecutor.enqueue(lowJob2)  // 6
+        serialExecutor.enqueue(mediumJob2)  // 4
+        serialExecutor.enqueue(highJob2)  // 2
+        serialExecutor.enqueue(stopJob)  // 7
       }
       serialExecutor.enqueue(enqueueJob)
 
@@ -177,14 +178,14 @@ struct ExecutorFixture {
     }
   }
 
-  static func test<C: Clock, E: SchedulableExecutor> (
-      schedulableExecutor: E,
-      clock: C
+  static func test<C: Clock, E: SchedulableExecutor>(
+    schedulableExecutor: E,
+    clock: C
   ) async -> Bool {
     print("\no SchedulableExecutor (\(clock))")
 
     print("  - Delays")
-    let delays = [ 15, 30, 100, 250, 500, 1000 ]
+    let delays = [15, 30, 100, 250, 500, 1000]
     let delayOrder = Mutex<[Int]>([])
     let actualDelays = Mutex<[C.Duration]>([])
     let start = clock.now
@@ -204,9 +205,11 @@ struct ExecutorFixture {
           }
         }
         let theDelay = clock.convert(from: .milliseconds(delay))!
-        schedulableExecutor.enqueue(job,
-                                    after: theDelay,
-                                    clock: clock)
+        schedulableExecutor.enqueue(
+          job,
+          after: theDelay,
+          clock: clock
+        )
       }
       let stopJob = createJob(priority: .low) {
         print("    + Stopping")
@@ -217,9 +220,11 @@ struct ExecutorFixture {
         continuation.resume()
       }
       let stopDelay = clock.convert(from: .milliseconds(1100))!
-      schedulableExecutor.enqueue(stopJob,
-                                  after: stopDelay,
-                                  clock: clock)
+      schedulableExecutor.enqueue(
+        stopJob,
+        after: stopDelay,
+        clock: clock
+      )
       if let runLoopExecutor {
         print("    + Telling RunLoopExecutor to run")
         try! runLoopExecutor.run()
@@ -232,9 +237,11 @@ struct ExecutorFixture {
         return false
       }
       for (ndx, delay) in delays.enumerated() {
-        let actualDelay = clock.convert(from: actualDelays.withLock {
-                                          return $0[ndx]
-                                        })!
+        let actualDelay = clock.convert(
+          from: actualDelays.withLock {
+            return $0[ndx]
+          }
+        )!
 
         // Must not return before the requested delay
         let minDelay: Duration = .milliseconds(delay)
@@ -243,11 +250,17 @@ struct ExecutorFixture {
         let warnDelay: Duration = .milliseconds(delay + delay / 4)
 
         // Must not return more than 25% after the requested delay
-        let maxDelay: Duration = .milliseconds(delay + max(delay / 4,
-                                                           maxDelayTolerance))
+        let maxDelay: Duration = .milliseconds(
+          delay
+            + max(
+              delay / 4,
+              maxDelayTolerance
+            )
+        )
 
         if actualDelay < minDelay
-          && minDelay - actualDelay > .milliseconds(minDelayTolerance) {
+          && minDelay - actualDelay > .milliseconds(minDelayTolerance)
+        {
           print("  * FAILED (\(actualDelay) < \(minDelay))")
           return false
         }
@@ -287,9 +300,11 @@ struct ExecutorFixture {
             $0.append(actualTime)
           }
         }
-        schedulableExecutor.enqueue(job,
-                                    at: target,
-                                    clock: clock)
+        schedulableExecutor.enqueue(
+          job,
+          at: target,
+          clock: clock
+        )
       }
       let stopJob = createJob(priority: .low) {
         print("    + Stopping")
@@ -300,9 +315,11 @@ struct ExecutorFixture {
         continuation.resume()
       }
       let stopDelay = clock.convert(from: .milliseconds(1100))!
-      schedulableExecutor.enqueue(stopJob,
-                                  after: stopDelay,
-                                  clock: clock)
+      schedulableExecutor.enqueue(
+        stopJob,
+        after: stopDelay,
+        clock: clock
+      )
       if let runLoopExecutor {
         print("    + Telling RunLoopExecutor to run")
         try! runLoopExecutor.run()
@@ -327,13 +344,20 @@ struct ExecutorFixture {
 
         // Must not return more than 25% after the requested time
         let maxTime = target.advanced(
-          by: clock.convert(from: .milliseconds(max(delays[ndx] / 4,
-                                                    maxDelayTolerance)))!
+          by: clock.convert(
+            from: .milliseconds(
+              max(
+                delays[ndx] / 4,
+                maxDelayTolerance
+              )
+            )
+          )!
         )
 
         if actualTime < minTime
           && clock.convert(from: actualTime.duration(to: minTime))!
-             > .milliseconds(minDelayTolerance) {
+            > .milliseconds(minDelayTolerance)
+        {
           print("  * FAILED (\(actualTime) < \(minTime))")
           return false
         }
@@ -354,10 +378,14 @@ struct ExecutorFixture {
     return result && result2
   }
   static func test(schedulableExecutor: some SchedulableExecutor) async -> Bool {
-    let result = await test(schedulableExecutor: schedulableExecutor,
-                            clock: .suspending)
-    let result2 = await test(schedulableExecutor: schedulableExecutor,
-                             clock: .continuous)
+    let result = await test(
+      schedulableExecutor: schedulableExecutor,
+      clock: .suspending
+    )
+    let result2 = await test(
+      schedulableExecutor: schedulableExecutor,
+      clock: .continuous
+    )
     return result && result2
   }
 
@@ -426,3 +454,4 @@ struct ExecutorFixture {
     return true
   }
 }
+#endif

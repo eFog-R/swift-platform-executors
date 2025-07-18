@@ -1,0 +1,12 @@
+.gitignore
+*.md
+*.txt
+*.yml
+**/*.docc/**
+**/*.entitlements
+**/*.input
+**/*.modulemap
+**/*.plist
+**/*.xcodeproj/**
+**/CODEOWNERS
+*Package.swift
