@@ -13,10 +13,10 @@
 #if os(Linux) || os(Android) || os(FreeBSD) || canImport(Darwin)
 
 #if os(Linux) || os(Android)
-import CPThreadExecutors
+import CPlatformExecutors
 
-private let sys_pthread_getname_np = CPThreadExecutors_pthread_getname_np
-private let sys_pthread_setname_np = CPThreadExecutors_pthread_setname_np
+private let sys_pthread_getname_np = CPlatformExecutors_pthread_getname_np
+private let sys_pthread_setname_np = CPlatformExecutors_pthread_setname_np
 #if os(Android)
 private typealias ThreadDestructor = @convention(c) (UnsafeMutableRawPointer) -> UnsafeMutableRawPointer
 #else

@@ -5,44 +5,33 @@ let package = Package(
   name: "SwiftPlatformExecutors",
   products: [
     .library(
-      name: "Win32NativeExecutors",
-      targets: ["Win32NativeExecutors"]
-    ),
-    .library(
-      name: "PThreadExecutors",
-      targets: ["PThreadExecutors"]
-    ),
+      name: "PlatformExecutors",
+      targets: [
+        "PlatformExecutors"
+      ]
+    )
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0")
   ],
   targets: [
     .target(
-      name: "Win32NativeExecutors"
-    ),
-    .target(
-      name: "PThreadExecutors",
+      name: "PlatformExecutors",
       dependencies: [
         .product(name: "DequeModule", package: "swift-collections"),
-        .target(name: "CPThreadExecutors"),
+        .target(name: "CPlatformExecutors"),
       ]
     ),
     .target(
-      name: "CPThreadExecutors",
+      name: "CPlatformExecutors",
       cSettings: [
         .define("_GNU_SOURCE")
       ]
     ),
     .testTarget(
-      name: "Win32NativeExecutorsTests",
+      name: "PlatformExecutorsTests",
       dependencies: [
-        "Win32NativeExecutors"
-      ]
-    ),
-    .testTarget(
-      name: "PThreadExecutorsTests",
-      dependencies: [
-        "PThreadExecutors"
+        "PlatformExecutors"
       ]
     ),
   ]

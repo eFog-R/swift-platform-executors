@@ -19,8 +19,8 @@
 #include <pthread.h>
 #include <errno.h>
 
-int CPThreadExecutors_pthread_setname_np(pthread_t thread, const char *name);
-int CPThreadExecutors_pthread_getname_np(pthread_t thread, char *name, size_t len);
+int CPlatformExecutors_pthread_setname_np(pthread_t thread, const char *name);
+int CPlatformExecutors_pthread_getname_np(pthread_t thread, char *name, size_t len);
 
 #endif
 #endif
