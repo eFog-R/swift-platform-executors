@@ -12,7 +12,7 @@
 
 #if canImport(Glibc)
 import Glibc
-import CPThreadExecutors
+import CPlatformExecutors
 
 @available(macOS 14.0, iOS 17.0, watchOS 10.0, tvOS 17.0, *)
 struct EpollSelector {
@@ -67,17 +67,17 @@ struct EpollSelector {
   @inline(never)
   internal static func eventfd_write(fd: CInt, value: UInt64) throws -> CInt {
     return try syscall(blocking: false) {
-      CPThreadExecutors.eventfd_write(fd, value)
+      CPlatformExecutors.eventfd_write(fd, value)
     }.result
   }
 }
 
 internal enum Epoll {
-  internal typealias epoll_event = CPThreadExecutors.epoll_event
+  internal typealias epoll_event = CPlatformExecutors.epoll_event
 
-  internal static let EPOLL_CTL_ADD: CInt = numericCast(CPThreadExecutors.EPOLL_CTL_ADD)
-  internal static let EPOLL_CTL_MOD: CInt = numericCast(CPThreadExecutors.EPOLL_CTL_MOD)
-  internal static let EPOLL_CTL_DEL: CInt = numericCast(CPThreadExecutors.EPOLL_CTL_DEL)
+  internal static let EPOLL_CTL_ADD: CInt = numericCast(CPlatformExecutors.EPOLL_CTL_ADD)
+  internal static let EPOLL_CTL_MOD: CInt = numericCast(CPlatformExecutors.EPOLL_CTL_MOD)
+  internal static let EPOLL_CTL_DEL: CInt = numericCast(CPlatformExecutors.EPOLL_CTL_DEL)
 
   #if os(Android)
   internal static let EPOLLIN: CUnsignedInt = 1  //numericCast(EPOLLIN)
@@ -87,27 +87,27 @@ internal enum Epoll {
   internal static let EPOLLHUP: CUnsignedInt = 16  //numericCast(EPOLLHUP)
   internal static let EPOLLET: CUnsignedInt = 2_147_483_648  //numericCast(EPOLLET)
   #elseif canImport(Musl)
-  internal static let EPOLLIN: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLIN)
-  internal static let EPOLLOUT: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLOUT)
-  internal static let EPOLLERR: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLERR)
-  internal static let EPOLLRDHUP: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLRDHUP)
-  internal static let EPOLLHUP: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLHUP)
-  internal static let EPOLLET: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLET)
+  internal static let EPOLLIN: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLIN)
+  internal static let EPOLLOUT: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLOUT)
+  internal static let EPOLLERR: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLERR)
+  internal static let EPOLLRDHUP: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLRDHUP)
+  internal static let EPOLLHUP: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLHUP)
+  internal static let EPOLLET: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLET)
   #else
-  internal static let EPOLLIN: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLIN.rawValue)
-  internal static let EPOLLOUT: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLOUT.rawValue)
-  internal static let EPOLLERR: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLERR.rawValue)
-  internal static let EPOLLRDHUP: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLRDHUP.rawValue)
-  internal static let EPOLLHUP: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLHUP.rawValue)
-  internal static let EPOLLET: CUnsignedInt = numericCast(CPThreadExecutors.EPOLLET.rawValue)
+  internal static let EPOLLIN: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLIN.rawValue)
+  internal static let EPOLLOUT: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLOUT.rawValue)
+  internal static let EPOLLERR: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLERR.rawValue)
+  internal static let EPOLLRDHUP: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLRDHUP.rawValue)
+  internal static let EPOLLHUP: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLHUP.rawValue)
+  internal static let EPOLLET: CUnsignedInt = numericCast(CPlatformExecutors.EPOLLET.rawValue)
   #endif
 
-  internal static let ENOENT: CUnsignedInt = numericCast(CPThreadExecutors.ENOENT)
+  internal static let ENOENT: CUnsignedInt = numericCast(CPlatformExecutors.ENOENT)
 
   @inline(never)
   internal static func epoll_create(size: CInt) throws -> CInt {
     return try syscall(blocking: false) {
-      CPThreadExecutors.epoll_create(size)
+      CPlatformExecutors.epoll_create(size)
     }.result
   }
 
@@ -120,7 +120,7 @@ internal enum Epoll {
     event: UnsafeMutablePointer<epoll_event>
   ) throws -> CInt {
     return try syscall(blocking: false) {
-      CPThreadExecutors.epoll_ctl(epfd, op, fd, event)
+      CPlatformExecutors.epoll_ctl(epfd, op, fd, event)
     }.result
   }
 
@@ -132,27 +132,27 @@ internal enum Epoll {
     timeout: CInt
   ) throws -> CInt {
     return try syscall(blocking: false) {
-      CPThreadExecutors.epoll_wait(epfd, events, maxevents, timeout)
+      CPlatformExecutors.epoll_wait(epfd, events, maxevents, timeout)
     }.result
   }
 }
 
 private enum EventFileDescriptor {
-  fileprivate static let EFD_CLOEXEC = CPThreadExecutors.EFD_CLOEXEC
-  fileprivate static let EFD_NONBLOCK = CPThreadExecutors.EFD_NONBLOCK
-  fileprivate typealias eventfd_t = CPThreadExecutors.eventfd_t
+  fileprivate static let EFD_CLOEXEC = CPlatformExecutors.EFD_CLOEXEC
+  fileprivate static let EFD_NONBLOCK = CPlatformExecutors.EFD_NONBLOCK
+  fileprivate typealias eventfd_t = CPlatformExecutors.eventfd_t
 
   @inline(never)
   fileprivate static func eventfd_read(fd: CInt, value: UnsafeMutablePointer<UInt64>) throws -> CInt {
     return try syscall(blocking: false) {
-      CPThreadExecutors.eventfd_read(fd, value)
+      CPlatformExecutors.eventfd_read(fd, value)
     }.result
   }
 
   @inline(never)
   internal static func eventfd_write(fd: CInt, value: UInt64) throws -> CInt {
     return try syscall(blocking: false) {
-      CPThreadExecutors.eventfd_write(fd, value)
+      CPlatformExecutors.eventfd_write(fd, value)
     }.result
   }
 
@@ -163,7 +163,7 @@ private enum EventFileDescriptor {
       // other Linux distros which ship a glibc from before this commit:
       // https://sourceware.org/git/?p=glibc.git;a=commitdiff;h=69eb9a183c19e8739065e430758e4d3a2c5e4f1a
       // which changes the first argument from `CInt` to `CUnsignedInt` (from Sat, 20 Sep 2014).
-      CPThreadExecutors.eventfd(numericCast(initval), flags)
+      CPlatformExecutors.eventfd(numericCast(initval), flags)
     }.result
   }
 }

@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 import Testing
-import PThreadExecutors
+import PlatformExecutors
 
 @Suite
 struct PThreadTaskExecutorTests {

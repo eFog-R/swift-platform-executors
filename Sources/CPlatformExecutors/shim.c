@@ -12,14 +12,14 @@
 
 #ifdef __linux__
 
-#include <CPThreadExecutors.h>
+#include <CPlatformExecutors.h>
 #include <pthread.h>
 
-int CPThreadExecutors_pthread_setname_np(pthread_t thread, const char *name) {
+int CPlatformExecutors_pthread_setname_np(pthread_t thread, const char *name) {
     return pthread_setname_np(thread, name);
 }
 
-int CPThreadExecutors_pthread_getname_np(pthread_t thread, char *name, size_t len) {
+int CPlatformExecutors_pthread_getname_np(pthread_t thread, char *name, size_t len) {
 #ifdef __ANDROID__
     // https://android.googlesource.com/platform/bionic/+/8a18af52d9b9344497758ed04907a314a083b204/libc/bionic/pthread_setname_np.cpp#51
     if (thread == pthread_self()) {

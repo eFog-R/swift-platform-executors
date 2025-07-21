@@ -12,7 +12,7 @@
 
 #if canImport(WinSDK)
 import Testing
-import Win32NativeExecutors
+import PlatformExecutors
 
 @Suite(.serialized) struct Win32ExecutorTests {
   @Test func testEventLoopExecutor() async {

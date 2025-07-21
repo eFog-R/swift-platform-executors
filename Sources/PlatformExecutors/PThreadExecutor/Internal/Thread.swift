@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #if os(Linux) || os(FreeBSD) || os(Android)
-import CPThreadExecutors
+import CPlatformExecutors
 #endif
 
 final class Thread {
