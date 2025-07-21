@@ -1,0 +1,251 @@
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the Swift.org open source project
+//
+// Copyright (c) 2025 Apple Inc. and the Swift project authors
+// Licensed under Apache License v2.0 with Runtime Library Exception
+//
+// See https://swift.org/LICENSE.txt for license information
+// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
+//
+//===----------------------------------------------------------------------===//
+
+internal import Synchronization
+internal import DequeModule
+
+#if canImport(Darwin)
+import Dispatch
+#endif
+
+/// A task executor that is backed by a thread.
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+public final class PThreadTaskExecutor: TaskExecutor, SerialExecutor, @unchecked Sendable {
+  #if canImport(Darwin)
+  typealias Selector = KQueueSelector
+  #elseif canImport(Glibc)
+  typealias Selector = EpollSelector
+  #else
+  #error("Unsupported platform")
+  #endif
+  /// Creates a new ``ThreadedTaskExecutor``.
+  ///
+  /// - Parameter name: The thread's name.
+  /// - Returns: The task executor.
+  public static func make(
+    name: String
+  ) -> PThreadTaskExecutor {
+    var executorConditionVariable = ConditionVariable(PThreadTaskExecutor?.none)
+
+    Thread.spawnAndRun(name: name) { thread in
+      assert(Thread.current == thread)
+      do {
+        let executor = PThreadTaskExecutor(
+          thread: thread
+        )
+        executorConditionVariable.signal { optionalExecutor in
+          optionalExecutor = executor
+        }
+        try executor.run()
+      } catch {
+        // We fatalError here because the only reasons this can be hit is if the underlying kqueue/epoll give us
+        // errors that we cannot handle which is an unrecoverable error for us.
+        fatalError("Unexpected error while running SelectableEventLoop: \(error).")
+      }
+    }
+    return executorConditionVariable.wait {
+      $0 != nil
+    } block: {
+      return $0!
+    }
+  }
+
+  /// This is the state that is accessed from multiple threads; hence, it must be protected via a lock.
+  struct MultiThreadedState {
+    /// Indicates if we are running and about to pop more jobs. If this is true then we don't have to wake the selector.
+    var pendingJobPop = false
+    /// This is the deque of enqueued jobs that we have to execute in the order they got enqueued.
+    var jobs = Deque<UnownedJob>(minimumCapacity: 4096)
+  }
+
+  /// This is the state that is bound to this thread.
+  struct ThreadBoundState: ~Copyable {
+    /// The executor's thread.
+    private var thread: Thread
+
+    /// The executor's selector.
+    var selector: Selector {
+      get {
+        assert(self.thread.isCurrent)
+        return self._selector
+      }
+      set {
+        assert(self.thread.isCurrent)
+        self._selector = newValue
+      }
+    }
+
+    /// The jobs that are next in line to be executed.
+    var nextExecutedJobs: Deque<UnownedJob> {
+      get {
+        assert(self.thread.isCurrent)
+        return self._nextExecutedJobs
+      }
+      set {
+        assert(self.thread.isCurrent)
+        self._nextExecutedJobs = newValue
+      }
+    }
+
+    /// This method can be called from off thread so we are not asserting here.
+    func wakeupSelector() throws {
+      try self._selector.wakeup()
+    }
+
+    /// The backing storage for the selector.
+    var _selector: Selector
+
+    /// The backing storage of the next executed jobs.
+    var _nextExecutedJobs: Deque<UnownedJob>
+
+    init(thread: Thread, _selector: Selector, _nextExecutedJobs: Deque<UnownedJob>) {
+      self.thread = thread
+      self._selector = _selector
+      self._nextExecutedJobs = _nextExecutedJobs
+    }
+  }
+
+  /// This is the state that is accessed from multiple threads; hence, it is protected via a lock.
+  ///
+  /// - Note:In the future we could use an MPSC queue and atomics here.
+  let _multiThreadedState = Mutex(MultiThreadedState())
+
+  /// This is the state that is accessed from the thread backing the executor.
+  private var _threadBoundState: ThreadBoundState
+
+  /// The executor's thread
+  private var thread: Thread
+
+  /// Returns if we are currently running on the executor.
+  private var onExecutor: Bool {
+    return self.thread.isCurrent
+  }
+
+  internal init(thread: Thread) {
+    var nextExecutedJobs = Deque<UnownedJob>()
+    // We will process 4096 jobs per while loop.
+    nextExecutedJobs.reserveCapacity(4096)
+    self._threadBoundState = .init(
+      thread: thread,
+      _selector: try! Selector(),
+      _nextExecutedJobs: nextExecutedJobs
+    )
+    self.thread = thread
+  }
+
+  deinit {
+    precondition(
+      self._multiThreadedState.withLock { !$0.jobs.isEmpty },
+      "PThreadExecutor had left over jobs when deiniting."
+    )
+  }
+
+  public func enqueue(_ job: UnownedJob) {
+    if self.onExecutor {
+      // We are in the executor so we can just enqueue the job and
+      // it will get dequeued after the current run loop tick.
+      self._multiThreadedState.withLock { state in
+        state.jobs.append(job)
+      }
+    } else {
+      let shouldWakeSelector = self._multiThreadedState.withLock { state in
+        state.jobs.append(job)
+        guard state.pendingJobPop else {
+          // We have to wake the selector and we are going to store that we are about to do that.
+          state.pendingJobPop = true
+          return true
+        }
+        // There is already a next tick scheduled so we don't have to wake the selector.
+        return false
+      }
+
+      // We only need to wake up the selector if we're not in the executor. If we're in the executor already, we're
+      // we're running a job already which means that we'll check at least once more if there are other jobs to run.
+      // While we had the lock we also checked whether the executor was _already_ going to be woken.
+      // This saves us a syscall on hot loops.
+      //
+      // In the future we'll use an MPSC queue here and that will complicate things, so we may get some spurious wakeups,
+      // but as long as we're using the big dumb lock we can make this optimization safely.
+      if shouldWakeSelector {
+        // Nothing we can do really if we fail to wake the selector
+        try? self._threadBoundState.wakeupSelector()
+      }
+    }
+  }
+
+  private func assertOnExecutor() {
+    assert(self.onExecutor)
+  }
+
+  private func preconditionOnExecutor() {
+    precondition(self.onExecutor)
+  }
+
+  /// Wake the `Selector` which means `Selector.whenReady(...)` will unblock.
+  internal func _wakeupSelector() throws {
+    try self._threadBoundState.selector.wakeup()
+  }
+
+  /// Start processing the jobs and handle any I/O.
+  ///
+  /// This method will continue running and blocking if needed.
+  internal func run() throws {
+    self.assertOnExecutor()
+
+    // We need to ensure we process all jobs even if a job enqueued another job
+    while true {
+      self._multiThreadedState.withLock { state in
+        if !state.jobs.isEmpty {
+          // We got some jobs that we should execute. Let's copy them over so we can
+          // give up the lock.
+          while self._threadBoundState.nextExecutedJobs.count < 4096 {
+            guard let job = state.jobs.popFirst() else {
+              break
+            }
+
+            // TODO: The following CoWs right now. Need to fix that
+            self._threadBoundState.nextExecutedJobs.append(job)
+          }
+        }
+
+        if self._threadBoundState.nextExecutedJobs.isEmpty {
+          // We got no jobs to execute so we will block and need to be woken up.
+          state.pendingJobPop = false
+        }
+      }
+
+      // Execute all the jobs that were submitted
+      let didExecuteJobs = !self._threadBoundState.nextExecutedJobs.isEmpty
+
+      while let job = self._threadBoundState.nextExecutedJobs.popFirst() {
+        #if canImport(Darwin)
+        autoreleasepool {
+          job.runSynchronously(on: self.asUnownedSerialExecutor())
+        }
+        #else
+        job.runSynchronously(on: self.asUnownedSerialExecutor())
+        #endif
+      }
+
+      if didExecuteJobs {
+        // We executed some jobs that might have enqueued new jobs
+        continue
+      }
+
+      try self._threadBoundState.selector.whenReady(
+        strategy: .block
+      )
+
+      self._multiThreadedState.withLock { $0.pendingJobPop = true }
+    }
+  }
+}
