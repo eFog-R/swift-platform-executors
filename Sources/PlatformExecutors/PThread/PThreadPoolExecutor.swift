@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if os(Linux) || os(Android) || os(FreeBSD) || canImport(Darwin)
 internal import Synchronization
 
 /// A task executor that distributes work across multiple `PThreadExecutor` instances.
@@ -35,8 +36,13 @@ internal import Synchronization
 /// ```
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 public final class PThreadPoolExecutor: TaskExecutor {
+  /// The pool's name.
+  private let name: String
   /// The pool's executors.
-  private let executors: [PThreadExecutor]
+  ///
+  /// This is nonisolated(unsafe) and a var since we need to pass self to the individual threads which requires
+  /// us to be fully initialized.
+  private nonisolated(unsafe) var executors: [PThreadExecutor]!
   /// The current index for selecting the next executor to run on.
   private let index = Atomic<Int>(0)
 
@@ -52,16 +58,17 @@ public final class PThreadPoolExecutor: TaskExecutor {
     name: String,
     poolSize: Int
   ) {
+    self.name = name
     precondition(poolSize > 0, "The pool size must be positive")
     var executors = [PThreadExecutor]()
     executors.reserveCapacity(poolSize)
     for i in 0..<poolSize {
-      executors.append(PThreadExecutor(name: "\(name)-\(i)"))
+      executors.append(PThreadExecutor(name: "\(name)-\(i)", poolExecutor: self))
     }
     self.executors = executors
   }
 
-  public func enqueue(_ job: UnownedJob) {
+  public func enqueue(_ job: consuming ExecutorJob) {
     self.next().enqueue(job)
   }
 
@@ -69,3 +76,11 @@ public final class PThreadPoolExecutor: TaskExecutor {
     self.executors[abs(self.index.wrappingAdd(1, ordering: .relaxed).newValue % self.executors.count)]
   }
 }
+
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension PThreadPoolExecutor: CustomStringConvertible {
+  public var description: String {
+    "PThreadPoolExecutor(\(self.name))"
+  }
+}
+#endif

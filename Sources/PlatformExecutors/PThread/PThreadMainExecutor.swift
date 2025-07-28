@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if os(Linux) || os(Android) || os(FreeBSD) || canImport(Darwin)
 /// A main executor that provides serial execution by taking over the current thread.
 ///
 /// ## Usage
@@ -25,7 +26,7 @@
 /// mainExecutor.stop()
 /// ```
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
-public final class PThreadMainExecutor: MainExecutor, TaskExecutor, @unchecked Sendable {
+public final class PThreadMainExecutor: MainExecutor, @unchecked Sendable {
   private let pThreadExecutor: PThreadExecutor
 
   /// Creates a new `PThreadMainExecutor` that takes control of the current thread.
@@ -40,11 +41,7 @@ public final class PThreadMainExecutor: MainExecutor, TaskExecutor, @unchecked S
   public func run() throws {
     // We are taking over the current thread
     try self.pThreadExecutor.run { job in
-      job
-        .runSynchronously(
-          isolatedTo: self.asUnownedSerialExecutor(),
-          taskExecutor: self.asUnownedTaskExecutor()
-        )
+      job.runSynchronously(on: self.asUnownedSerialExecutor())
     }
   }
 
@@ -59,3 +56,4 @@ extension PThreadMainExecutor: CustomStringConvertible {
     "PThreadMainExecutor(\(self.pThreadExecutor.thread?.description ?? "not running"))"
   }
 }
+#endif
