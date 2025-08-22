@@ -9,6 +9,19 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the SwiftNIO open source project
+//
+// Copyright (c) 2017-2024 Apple Inc. and the SwiftNIO project authors
+// Licensed under Apache License v2.0
+//
+// See LICENSE.txt for license information
+// See CONTRIBUTORS.txt for the list of SwiftNIO project authors
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
 
 #if os(Linux) || os(Android) || os(FreeBSD) || canImport(Darwin)
 #if canImport(Glibc)
@@ -76,7 +89,7 @@ struct IOError: Error, CustomStringConvertible {
 
 @inline(__always)
 @discardableResult
-internal func syscall<T: FixedWidthInteger>(
+internal func retryingSyscall<T: FixedWidthInteger>(
   blocking: Bool,
   where function: String = #function,
   _ body: () throws -> T
@@ -90,7 +103,6 @@ internal func syscall<T: FixedWidthInteger>(
       #else
       let err = errno
       #endif
-      print("errno", err)
       switch (err, blocking) {
       case (EINTR, _):
         continue

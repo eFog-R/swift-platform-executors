@@ -20,15 +20,14 @@ typealias DefaultExecutorFactory = PlatformExecutorFactory
 @available(macOS 26, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 struct Example {
   static func main() async throws {
+    print("Starting executor example")
+
     // Default executor
     await self.run(executor: nil)
     await self.runGroup(executor: nil)
 
     // Platform executors
     await PlatformExecutorFactory.withTaskExecutor(name: "PlatformTask") { executor in
-      await self.run(executor: executor)
-    }
-    await PlatformExecutorFactory.withTaskPoolExecutor(name: "PlatformPool") { executor in
       await self.run(executor: executor)
     }
     await PlatformExecutorFactory.withSerialExecutor(name: "PlatformSerial") { executor in
@@ -55,9 +54,6 @@ struct Example {
     // PThread based executors
     #if os(Linux) || os(Android) || os(FreeBSD) || canImport(Darwin)
     await PThreadExecutor.withExecutor(name: "PThreadTaskExecutor") { executor in
-      await self.run(executor: executor)
-    }
-    await PThreadPoolExecutor.withExecutor(name: "PThreadPool") { executor in
       await self.run(executor: executor)
     }
     await PThreadSerialExecutor.withExecutor(name: "PThreadSerial") { executor in

@@ -9,6 +9,19 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the SwiftNIO open source project
+//
+// Copyright (c) 2017-2024 Apple Inc. and the SwiftNIO project authors
+// Licensed under Apache License v2.0
+//
+// See LICENSE.txt for license information
+// See CONTRIBUTORS.txt for the list of SwiftNIO project authors
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
 
 #if os(Linux) || os(FreeBSD) || canImport(Darwin)
 
@@ -18,12 +31,6 @@
 @preconcurrency import Musl
 #elseif canImport(Darwin)
 import Darwin
-#endif
-
-#if canImport(FoundationEssentials)
-import FoundationEssentials
-#else
-import Foundation
 #endif
 
 enum SystemCoreCount {
@@ -96,8 +103,42 @@ enum SystemCoreCount {
   }
 
   private static func firstLineOfFile(path: String) throws -> String {
-    return try String(contentsOfFile: path, encoding: .utf8)
+    let fd = try retryingSyscall(blocking: false) {
+      open(path, O_RDONLY)
+    }.result
+    guard fd != -1 else {
+      throw SystemError()
+    }
+
+    let result = Result {
+      var buffer = [UInt8](repeating: 0, count: 4096)
+      let bytesRead = try retryingSyscall(blocking: false) {
+        read(fd, &buffer, buffer.count)
+      }.result
+      guard bytesRead > 0 else {
+        throw SystemError()
+      }
+
+      let content = String(decoding: buffer[0..<Int(bytesRead)], as: UTF8.self)
+      return trim(content)
+    }
+
+    try retryingSyscall(blocking: false) {
+      close(fd)
+    }
+
+    return try result.get()
   }
+
+  private static func trim(_ s: String) -> String {
+    guard let first = s.firstIndex(where: { !$0.isWhitespace && !$0.isNewline }) else {
+      return String()
+    }
+    let last = s.lastIndex(where: { !$0.isWhitespace && !$0.isNewline })!
+    return String(s[first...last])
+  }
+
+  private struct SystemError: Error {}
 
   #endif
 }

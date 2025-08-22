@@ -9,6 +9,19 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the SwiftNIO open source project
+//
+// Copyright (c) 2017-2024 Apple Inc. and the SwiftNIO project authors
+// Licensed under Apache License v2.0
+//
+// See LICENSE.txt for license information
+// See CONTRIBUTORS.txt for the list of SwiftNIO project authors
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
 
 #if canImport(Darwin)
 import Darwin
@@ -39,7 +52,7 @@ struct KQueueSelector {
 
   @inline(never)
   fileprivate static func kqueue() throws -> CInt {
-    return try syscall(blocking: false) {
+    return try retryingSyscall(blocking: false) {
       Darwin.kqueue()
     }.result
   }
@@ -54,7 +67,7 @@ struct KQueueSelector {
     nevents: CInt,
     timeout: UnsafePointer<Darwin.timespec>?
   ) throws -> CInt {
-    return try syscall(blocking: false) {
+    return try retryingSyscall(blocking: false) {
       sysKevent(kq, changelist, nchanges, eventlist, nevents, timeout)
     }.result
   }
