@@ -11,15 +11,14 @@
 //===----------------------------------------------------------------------===//
 
 /// A platform-native task executor.
-@available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
+@available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999, *)
 public final class PlatformSerialExecutor: SerialExecutor {
   #if os(Linux) || os(Android) || os(FreeBSD)
   typealias Executor = PThreadSerialExecutor
   #elseif canImport(Darwin)
   typealias Executor = DispatchSerialExecutor
   #elseif os(Windows)
-  // TODO: This is not the right type
-  typealias Executor = Win32EventLoopExecutor
+  typealias Executor = Win32ThreadPoolExecutor
   #endif
 
   // This is implicitly unwrapped and nonisolated(unsafe) since we need create

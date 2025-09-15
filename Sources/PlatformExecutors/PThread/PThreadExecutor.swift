@@ -187,9 +187,17 @@ package final class PThreadExecutor: TaskExecutor, @unchecked Sendable {
   ) {
     self.init()
 
-    let conditionVariable = ConditionVariable(false)
+    let conditionVariable = ConditionVariable(true)
     let thread = Thread.spawnAndRun(name: name) {
       do {
+        // Block until we've set the thread in the thread bound state
+        conditionVariable.wait {
+          !$0
+        } block: {
+          _ in
+        }
+
+        // Signal that we've started running
         conditionVariable.signal { $0.toggle() }
 
         // It is incredibly important that we pass the right task executor
@@ -218,6 +226,10 @@ package final class PThreadExecutor: TaskExecutor, @unchecked Sendable {
 
     self._threadBoundState.thread = consume thread
 
+    // Signal that we've set the thread in the thread bound state
+    conditionVariable.signal { $0.toggle() }
+
+    // Block until we've started running
     conditionVariable.wait {
       $0
     } block: { _ in
@@ -238,7 +250,7 @@ package final class PThreadExecutor: TaskExecutor, @unchecked Sendable {
   }
 
   package func enqueue(_ job: consuming ExecutorJob) {
-    if #available(macOS 26.0, *) {
+    if #available(macOS 9999, *) {
       job.sequenceNumber =
         self.sequenceNumber.wrappingAdd(
           1,
@@ -385,7 +397,7 @@ private struct NonCopyablePriorityQueue: ~Copyable {
   var queue: PriorityQueue<UnownedJob>
 
   init() {
-    if #available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *) {
+    if #available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999, *) {
       self.queue = .init(compare: compareJobsByPriorityAndSequenceNumber)
     } else {
       self.queue = .init(compare: compareJobsByPriorityAndID)
